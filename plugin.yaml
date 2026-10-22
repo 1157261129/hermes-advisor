@@ -1,7 +1,7 @@
 name: advisor
 label: Advisor
 kind: standalone
-version: 0.1.0
+version: 0.2.0
 author: liujiangping
 description: >
   Zero-parameter advisor tool: the executor model hands its resolved conversation to a stronger

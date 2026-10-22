@@ -29,6 +29,28 @@ hermes plugins doctor ~/.hermes/plugins/advisor      # 注册路径
 hermes plugins validate ~/.hermes/plugins/advisor    # catalog 同款校验
 ```
 
+## 更新
+
+插件装的是 git checkout，更新就是拉取 + 重载：
+
+```bash
+hermes plugins update advisor        # 拉最新；会问一次确认
+hermes plugins update --yes          # 无终端 / 一次更新所有插件
+hermes plugins update advisor --force   # 安全扫描给出 caution 时强制（危险判定仍会拦）
+```
+
+生效范围：hooks / gateway 立即重载；**工具与系统提示要新会话**（工具定义在 agent 启动时生成）。
+`hermes plugins list` 看当前版本，`git -C ~/.hermes/plugins/advisor log --oneline -1` 看装的是哪个提交。
+
+想锁到某个提交（跳过漂移）：
+
+```bash
+hermes plugins install 1157261129/hermes-advisor --ref <40位sha> --force
+```
+
+> 别直接改 `~/.hermes/plugins/advisor` 里的文件：那是 git checkout，下次 `update` 快进会冲突。
+> 改 `~/workspace/hermes-advisor` 再推，然后 `update`。
+
 ## 配置审阅模型
 
 `advisor` 是 `hermes model` 辅助模型选择器里的一等槽位：
