@@ -1,0 +1,17 @@
+name: advisor
+label: Advisor
+kind: standalone
+version: 0.1.0
+author: liujiangping
+description: >
+  Zero-parameter advisor tool: the executor model hands its resolved conversation to a stronger
+  reviewer model and gets back a plan, a correction, or a stop signal. The reviewer runs through the
+  native auxiliary.advisor slot, so model choice, credentials, reasoning effort and persistence stay
+  host-owned. The tool is stripped from the prompt entirely while no reviewer is configured.
+requires_hermes: ">=0.22.0"
+provides_tools:
+  - advisor
+provides_hooks:
+  - on_session_end
+provides_middleware:
+  - llm_request

@@ -1,0 +1,10 @@
+{
+  "repo": "juicesharp/rpiv-mono",
+  "path": "packages/rpiv-advisor",
+  "package": "@juicesharp/rpiv-advisor",
+  "version": "2.13.9",
+  "commit": "c287cddb3eba50b9ecf670dbb04fecb9ef192d7e",
+  "commit_date": "2026-10-17",
+  "checked_at": "2026-10-22",
+  "verified_against": "npm tarball @juicesharp/rpiv-advisor@2.13.9 (sha256 逐文件一致)"
+}
