@@ -82,7 +82,9 @@ plugins:
 * **审阅者没有工具**：只做一次 chat 调用，回答只作为工具结果回到执行器，不写进 transcript。
 * **工具清单是完整注册表**：按上游 `getAllTools()` 语义取整个工具注册表（名字、描述、参数），
   而不是 `tool_search` 折叠后的三个桥工具。
-* **回答只出现一次**：工具描述要求执行器把要点复述到可见回复里，不要只留在折叠的工具卡片里。
+* **回答只出现一次**：工具描述与系统提示段都要求执行器把要点复述到可见回复里，不要只留在折叠的工具卡片里。
+* **结果可观测**：envelope 带 `advisor.effort`（实际推理强度）、`advisor.stop_reason`
+  （`completed` / `empty response` / `aborted` / `error`）与 `duration_ms`、`usage`。
 * **空回答只重试一次**：连续两次为空则明确报错，不进入循环。
 
 ## 与上游的差异
@@ -91,7 +93,7 @@ plugins:
 | --- | --- | --- |
 | `/advisor` 选择器写 `advisor.json` | `hermes model` → 辅助模型槽位 | Hermes 已有 profile/密钥/持久化的统一入口，插件不重复实现 |
 | 原样转发 provider 消息数组 | 渲染成文本 transcript | 审阅模型可能是另一家 provider，`tool_call_id`、`reasoning_content`、缓存标记原样转发会被拒收；渲染不丢信息，也不裁剪 |
-| `promptSnippet` + `promptGuidelines` | 工具描述全文 + 一段可开关的系统提示指引 | Hermes 插件工具默认被 `tool_search` 渐进披露，描述常常不进提示词 |
+| `promptSnippet` + `promptGuidelines` | 工具描述全文 + 一段可开关的系统提示指引（7 条 guideline 的精简版，1426 字符） | Hermes 插件工具默认被 `tool_search` 渐进披露，描述常常不进提示词 |
 | 会话内切换模型即时剥离工具 | 新会话生效 | 工具定义在 `AIAgent.__init__` 生成（`agent/agent_init.py:1119`）；调用入口另有一次 fail-closed 判定 |
 
 ## 已知限制
@@ -111,12 +113,13 @@ plugins:
 ## 自检
 
 ```bash
-python3 tests/test_advisor.py     # 24 项，纯 assert，不依赖 pytest / 不导入 Hermes / 不发模型调用
+python3 tests/test_advisor.py     # 27 项，纯 assert，不依赖 pytest / 不导入 Hermes / 不发模型调用
 ```
 
 覆盖：会话/任务隔离、同轮工具结果、载荷不可用时清旧快照、会话冻结路由优先、`auto` fail-closed、
 只读 Mapping 的会话身份、blocklist（含 `min_effort` 边界）、完整注册表清单、尾部 advisor 调用
-剔除保留助手文本、空回答单次重试、未配置/被禁用时零请求。
+剔除保留助手文本、空回答单次重试、未配置/被禁用时零请求、guidance 段 7 条要点与长度预算、
+envelope 的 `effort`/`stop_reason`、取消类异常文案、`KeyboardInterrupt` 不被吞。
 
 ## 结构
 

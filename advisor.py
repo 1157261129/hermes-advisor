@@ -68,13 +68,29 @@ SYSTEM_PROMPT = (
 # 保证 transcript 以 user 角色收尾（部分 provider 拒绝 assistant 前缀续写）。
 ADVISOR_NUDGE = "Please advise on the executor's situation above."
 
-# 系统提示里的精简指引。Hermes 默认把插件工具收进 tool_search 渐进披露，工具描述往往不在提示词里，
-# 所以另注册一段 system prompt section（未配置时返回空串，整段不渲染，零 token 成本）。
-GUIDANCE_SNIPPET = (
+# 系统提示里的指引段（上游 promptSnippet + 7 条 guidelines 的精简版，约 1.2k 字符）。
+# Hermes 默认把插件工具收进 tool_search 渐进披露，工具描述往往不在提示词里，所以另注册一段
+# system prompt section；未配置时返回空串，宿主整段不渲染（零 token）。
+GUIDANCE_SECTION = (
     "A stronger reviewer model is available as the `advisor` tool (zero parameters; if it is not in "
-    "your tool list, reach it through tool_search/tool_call). Call it before substantive work, when "
-    "stuck or looping, and once more before declaring the task done; restate its key guidance in your "
-    "next visible reply."
+    "your tool list, reach it through tool_search/tool_call).\n\n"
+    "- Call `advisor` BEFORE substantive work — before writing, before committing to an "
+    "interpretation, before building on an assumption. Orientation (finding files, fetching a source, "
+    "seeing what's there) is not substantive work; writing, editing, and declaring an answer are.\n"
+    "- Also call it when you believe the task is complete, but make the deliverable durable first "
+    "(write the file, save the result, commit the change): the call takes time, and an unsaved result "
+    "can be lost while it runs.\n"
+    "- Also call it when stuck — errors recurring, approach not converging, results that don't fit — "
+    "or when considering a change of approach.\n"
+    "- On multi-step tasks call it at least once before committing to an approach and once before "
+    "declaring done; on short reactive tasks where the next action is dictated by tool output you just "
+    "read, extra calls add little.\n"
+    "- Weigh the advice seriously. Adapt only when a step it recommends fails empirically, or when "
+    "primary-source evidence contradicts a specific claim.\n"
+    "- If evidence points one way and the advisor another, don't silently switch: call it once more "
+    "and surface the conflict.\n"
+    "- Put the advisor's key guidance into your next visible reply (quote or paraphrase it) before "
+    "continuing; the user often cannot see collapsed tool results."
 )
 
 # 工具描述 = 上游 ADVISOR_DESCRIPTION + 上游 DEFAULT_PROMPT_GUIDELINES。
@@ -118,6 +134,9 @@ ERR_NO_CONTEXT = (
     "as of the previous model request; retry after the next tool result."
 )
 ERR_NO_CONTEXT_DETAIL = "no context snapshot"
+ERR_CALL_ABORTED = "Advisor call was cancelled before it completed."
+ERR_ABORTED_DETAIL = "aborted"
+ERR_CALL_THREW = "Advisor call threw: {error}"
 ERR_BLOCKED = (
     "Advisor is disabled for executor {model} at effort={effort}. Do not consult it; proceed on your "
     "own and tell the user you escalated without a reviewer."
@@ -411,18 +430,50 @@ def _usage_dict(usage: Any) -> Dict[str, Any]:
     return result
 
 
-def _advisor_envelope(text: str, result: Any, started: float, **extra: Any) -> Dict[str, Any]:
-    """构造工具结果 envelope：审阅文本置顶，其余为宿主归属信息。"""
+def _advisor_envelope(
+    text: str, result: Any, started: float, *, stop_reason: str = "completed", **extra: Any,
+) -> Dict[str, Any]:
+    """构造工具结果 envelope：审阅文本置顶，其余为宿主归属信息与结束原因。"""
     return {
         "text": text,
         **extra,
         "advisor": {
             "provider": getattr(result, "provider", "") or "",
             "model": getattr(result, "model", "") or "",
+            "effort": advisor_effort(),
+            "stop_reason": stop_reason,
             "duration_ms": int((time.monotonic() - started) * 1000),
             "usage": _usage_dict(getattr(result, "usage", None)),
         },
     }
+
+
+def _failure_envelope(text: str, error: str, stop_reason: str) -> Dict[str, Any]:
+    """无结果对象时的失败 envelope：仍带上已知路由信息，供执行器 / 日志定位。"""
+    provider, model = advisor_route()
+    return {
+        "text": text,
+        "error": error,
+        "advisor": {
+            "provider": provider,
+            "model": model,
+            "effort": advisor_effort(),
+            "stop_reason": stop_reason,
+        },
+    }
+
+
+# 宿主硬取消与超时类异常：按上游「已取消」语义回话，不当成 provider 故障。
+# ``AuxiliaryExplicitCancellation`` 继承 ``BaseException``（避免被 retry/fallback 层吃掉），
+# 所以只能按类名识别，不能 ``import`` 后 ``except``。
+_CANCELLATION_EXC_NAMES = frozenset({
+    "AuxiliaryExplicitCancellation", "CancelledError", "InterruptedError", "DeadlineExpired",
+})
+
+
+def _is_cancellation(exc: BaseException) -> bool:
+    """该异常是否表示「被取消/中断」，而不是 provider 或网络故障。"""
+    return type(exc).__name__ in _CANCELLATION_EXC_NAMES
 
 
 def consult(ctx: Any, snapshot: Snapshot, user_task: str = "", entries: Any = None) -> Dict[str, Any]:
@@ -454,11 +505,17 @@ def consult(ctx: Any, snapshot: Snapshot, user_task: str = "", entries: Any = No
             if not text:
                 logger.warning("advisor: 审阅模型连续两次返回空内容")
                 return _advisor_envelope(
-                    ERR_EMPTY_RESPONSE, result, started, error=ERR_EMPTY_RESPONSE_DETAIL)
-    except Exception as exc:
+                    ERR_EMPTY_RESPONSE, result, started,
+                    stop_reason=ERR_EMPTY_RESPONSE_DETAIL, error=ERR_EMPTY_RESPONSE_DETAIL)
+    except BaseException as exc:  # 取消类异常可以是 BaseException，必须能被这里分类
+        if _is_cancellation(exc):
+            logger.info("advisor: 审阅调用被取消: %s", type(exc).__name__)
+            return _failure_envelope(ERR_CALL_ABORTED, ERR_ABORTED_DETAIL, ERR_ABORTED_DETAIL)
+        if not isinstance(exc, Exception):
+            raise  # KeyboardInterrupt / SystemExit 不归本插件吞掉
         message = str(exc) or type(exc).__name__
         logger.warning("advisor: 审阅调用失败: %s: %s", type(exc).__name__, message)
-        return {"text": f"Advisor call threw: {message}", "error": message}
+        return _failure_envelope(ERR_CALL_THREW.format(error=message), message, "error")
     return _advisor_envelope(text, result, started)
 
 
@@ -473,8 +530,8 @@ def _load_config() -> Dict[str, Any]:
         return {}
 
 
-def advisor_route() -> Tuple[str, str]:
-    """有效 ``auxiliary.advisor`` 路由 ``(provider, model)``。
+def _auxiliary_block() -> Dict[str, Any]:
+    """``auxiliary.advisor`` 的有效配置块。
 
     优先经宿主解析器读取——网关会话会把 ``auxiliary`` 冻结进 ContextVar，磁盘配置可能已经变了；
     解析器不可用时退回磁盘配置。
@@ -489,9 +546,19 @@ def advisor_route() -> Tuple[str, str]:
     if not isinstance(block, dict) or not block:
         auxiliary = _load_config().get("auxiliary")
         block = auxiliary.get(TASK) if isinstance(auxiliary, dict) else {}
-    if not isinstance(block, dict):
-        return "", ""
+    return block if isinstance(block, dict) else {}
+
+
+def advisor_route() -> Tuple[str, str]:
+    """有效 ``auxiliary.advisor`` 路由 ``(provider, model)``。"""
+    block = _auxiliary_block()
     return str(block.get("provider") or "").strip(), str(block.get("model") or "").strip()
+
+
+def advisor_effort() -> str:
+    """审阅者的推理强度（``auxiliary.advisor.reasoning_effort``）；未设置时为空串，由宿主取默认。"""
+    value = _auxiliary_block().get("reasoning_effort")
+    return str(value).strip() if isinstance(value, str) else ""
 
 
 def advisor_configured(provider: str, model: str) -> bool:
@@ -617,7 +684,7 @@ def make_prompt_section(ctx: Any):
                 return ""
         elif executor_blocked(entries, f"{executor_identity()[0]}/{executor_identity()[1]}", effort):
             return ""
-        return GUIDANCE_SNIPPET
+        return GUIDANCE_SECTION
 
     return render_section
 
@@ -644,9 +711,11 @@ def status_text(ctx: Any) -> str:
     entries = ctx.get_config("disabled_for_models", default=[])
     state, reason = advisor_state(entries)
     executor_provider, executor_model, effort = executor_identity()
+    effort_hint = advisor_effort() or "provider default"
     lines = [
         "Advisor",
-        f"  reviewer:  {provider or 'auto'} / {model or '(provider default)'}   (auxiliary.advisor)",
+        f"  reviewer:  {provider or 'auto'} / {model or '(provider default)'}   "
+        f"(auxiliary.advisor, effort={effort_hint})",
         f"  executor:  {executor_provider}/{executor_model}   effort={effort or 'unset'}",
         f"  state:     {state} — {reason}",
         f"  blocklist: {json.dumps(entries, ensure_ascii=False)}",

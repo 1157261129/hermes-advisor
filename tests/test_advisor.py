@@ -25,7 +25,9 @@ _STUBBED_MODULES = ("tools", "tools.registry", "agent", "agent.auxiliary_task_co
 _CONFIGURED = {
     "model": {"provider": "opencode-go", "default": "deepseek-v4.1-flash"},
     "agent": {"reasoning_effort": "medium"},
-    "auxiliary": {"advisor": {"provider": "opencode-go", "model": "deepseek-v4.1-flash"}},
+    "auxiliary": {"advisor": {
+        "provider": "opencode-go", "model": "deepseek-v4.1-flash", "reasoning_effort": "high",
+    }},
 }
 _UNCONFIGURED = {"auxiliary": {"advisor": {"provider": "auto", "model": "auto"}}}
 
@@ -110,7 +112,7 @@ class FakeLlm:
         """记录关键字参数，返回带 text/provider/model/usage 的结果对象。"""
         self.calls.append(kwargs)
         item = self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
-        if isinstance(item, Exception):
+        if isinstance(item, BaseException):  # 含取消类 BaseException（AuxiliaryExplicitCancellation）
             raise item
         return SimpleNamespace(
             text=item, provider="anthropic", model="claude-opus-4-5",
@@ -385,7 +387,7 @@ def test_prompt_section_accepts_readonly_mapping() -> None:
     blocked = MappingProxyType({"provider": "anthropic", "model": "claude-opus-4-5"})
     allowed = MappingProxyType({"provider": "opencode-go", "model": "deepseek-v4.1-flash"})
     assert section(blocked) == ""
-    assert section(allowed) == advisor.GUIDANCE_SNIPPET
+    assert section(allowed) == advisor.GUIDANCE_SECTION
 
     _use_config(_UNCONFIGURED)
     assert section(allowed) == ""
@@ -402,6 +404,8 @@ def test_consult_success_envelope() -> None:
     assert payload["text"] == "do X next"
     assert payload["advisor"]["model"] == "claude-opus-4-5"
     assert payload["advisor"]["usage"]["total_tokens"] == 15
+    assert payload["advisor"]["effort"] == "high", "envelope 必须带上审阅者实际强度"
+    assert payload["advisor"]["stop_reason"] == "completed"
     call = ctx.llm.calls[0]
     assert call["task"] == "advisor" and call["purpose"] == "advisor"
 
@@ -418,16 +422,44 @@ def test_consult_retries_empty_response_once() -> None:
     payload = advisor.consult(empty, _snapshot())
     assert payload["text"] == advisor.ERR_EMPTY_RESPONSE
     assert payload["error"] == advisor.ERR_EMPTY_RESPONSE_DETAIL
+    assert payload["advisor"]["stop_reason"] == advisor.ERR_EMPTY_RESPONSE_DETAIL
     assert len(empty.llm.calls) == 2, "只重试一次，不允许循环"
 
 
 def test_consult_failure_paths() -> None:
-    """异常路径返回可读错误，绝不抛出。"""
+    """异常路径返回可读错误，绝不抛出；失败 envelope 仍带路由信息。"""
     _reset()
     _use_config(_CONFIGURED)
     failed = advisor.consult(FakeCtx(llm=FakeLlm([RuntimeError("boom")])), _snapshot())
     assert failed["text"] == "Advisor call threw: boom"
     assert failed["error"] == "boom"
+    assert failed["advisor"]["stop_reason"] == "error"
+    assert failed["advisor"]["model"] == "deepseek-v4.1-flash"
+
+
+def test_consult_reports_cancellation_like_upstream() -> None:
+    """宿主硬取消（BaseException 子类）走上游「cancelled」文案，不当成 provider 故障。"""
+
+    class AuxiliaryExplicitCancellation(BaseException):
+        """模拟宿主的硬取消信号。"""
+
+    _reset()
+    _use_config(_CONFIGURED)
+    payload = advisor.consult(FakeCtx(llm=FakeLlm([AuxiliaryExplicitCancellation()])), _snapshot())
+    assert payload["text"] == advisor.ERR_CALL_ABORTED
+    assert payload["error"] == advisor.ERR_ABORTED_DETAIL
+    assert payload["advisor"]["stop_reason"] == advisor.ERR_ABORTED_DETAIL
+
+
+def test_keyboard_interrupt_is_not_swallowed() -> None:
+    """KeyboardInterrupt 必须继续向上抛，不能被插件当成普通失败。"""
+    _reset()
+    _use_config(_CONFIGURED)
+    try:
+        advisor.consult(FakeCtx(llm=FakeLlm([KeyboardInterrupt()])), _snapshot())
+    except KeyboardInterrupt:
+        return
+    raise AssertionError("KeyboardInterrupt 被吞掉了")
 
 
 def test_consult_refuses_when_route_was_removed() -> None:
@@ -486,6 +518,19 @@ def test_on_session_end_drops_that_session_only() -> None:
 
 # ---------------------------------------------------------------- 注册
 
+def test_guidance_section_carries_upstream_guidelines() -> None:
+    """系统提示段覆盖上游 7 条 guideline 的要点，且不超出宿主单段预算。"""
+    _reset()
+    text = advisor.GUIDANCE_SECTION
+    bullets = [line for line in text.splitlines() if line.startswith("- ")]
+    assert len(bullets) == 7, f"应为精简版 7 条 guideline，实际 {len(bullets)} 条"
+    for keyword in ("BEFORE substantive work", "durable first", "when stuck",
+                    "multi-step tasks", "Weigh the advice", "surface the conflict", "visible reply"):
+        assert keyword in text, f"缺少要点: {keyword}"
+    assert "tool_search/tool_call" in text
+    assert len(text) < 2_000, "超过 2k 字符会挤占系统提示预算（宿主单段上限 4000）"
+
+
 def test_register_wires_everything() -> None:
     """注册函数接好 auxiliary 槽位、中间件、零参数工具、/advisor、提示段落与卸载回调。"""
     _reset()
@@ -501,7 +546,7 @@ def test_register_wires_everything() -> None:
     assert tool["check_fn"]() is True
     assert "advisor" in ctx.commands
     assert "on_session_end" in ctx.hooks
-    assert ctx.prompt_sections["advisor-guidance"]({}) == advisor.GUIDANCE_SNIPPET
+    assert ctx.prompt_sections["advisor-guidance"]({}) == advisor.GUIDANCE_SECTION
     assert ctx.unload_hooks == [advisor._STORE.clear]
     assert advisor.status_text(ctx).startswith("Advisor")
 

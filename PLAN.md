@@ -16,7 +16,8 @@
 | `/advisor` 选择审阅模型 + effort，持久化 | `ctx.register_auxiliary_task("advisor")` → 原生 `auxiliary.advisor` 槽位 | 选择器复用 `hermes model` → Configure auxiliary models / Desktop Settings；持久化、profile、密钥全部宿主负责 |
 | `advisor.json` 中 `disabledForModels` | 插件设置 `plugins.entries.advisor.settings.disabled_for_models` | 支持字符串条目与 `{model, min_effort}` |
 | 无模型时把工具从激活集移除（零提示成本） | `check_fn` 未配置即返回 `False`，schema/描述不进入提示词 | 用 `no_cache_check_fn` 绕过 30s TTL |
-| 结果回传为工具结果 + 提示执行器复述要点 | 工具描述写入上游 7 条 guideline；另有一段可开关的系统提示指引 | 指引段落在未配置时整段不渲染（零 token） |
+| 结果回传为工具结果 + 提示执行器复述要点 | 工具描述写入上游 7 条 guideline；系统提示另有同样 7 条的精简版（1426 字符） | 指引段落在未配置时整段不渲染（零 token） |
+| envelope 带 effort / stopReason | `advisor.effort` + `advisor.stop_reason`（completed / empty response / aborted / error） | 取消类异常按类名识别，文案对齐上游 |
 | `/advisor` 通知（restored/disabled/…） | `/advisor` 命令输出状态行 | Hermes 无等价通知通道，改为按需查询 |
 
 ## 架构
@@ -91,11 +92,12 @@ register(ctx)
 | 未配置 / `model: auto` | `check_fn` False；工具不进工具定义；无系统提示段落；**中间件不保留快照**；`tool_search` 看不到 advisor |
 | 已配置 + 默认 `tool_search` | 工具被折叠进桥（默认 20 个定义里没有 advisor，`tool_search` 能看到 `advisor` 源） |
 | 已配置 + `tools.tool_search.enabled: off` | `advisor` 直接出现在工具定义里（34 个工具） |
-| 已配置 | `render_system_prompt_sections` 渲染 `advisor-guidance`（306 字符，走真实 `MappingProxyType`） |
+| 已配置 | `render_system_prompt_sections` 渲染 `advisor-guidance`（走真实 `MappingProxyType`） |
 | blocklist `min_effort: high` + 执行器 `high` | `check_fn` False；无提示段落；`/advisor` 显示 `blocked` |
 | `llm_request` 中间件投递 | 捕获成功且 `changed=False`（不改写宿主请求） |
 | `/advisor` 命令 | 输出 reviewer / executor / state / blocklist / 怎么改 |
-| 自检脚本 | 24/24 通过 |
+| 自检脚本 | 27/27 通过 |
+| guidance 段内容 | 7 条上游 guideline 要点，1426 字符（宿主单段上限 4000，聚合上限 8000）；早期 306 字符摘要版已扩写 |
 
 未覆盖（残留风险）：`plugins.isolation: host` 下中间件跨进程投递；真实 provider 付费调用；
 Responses 增量形态（`instructions` + `previous_response_id`）。
