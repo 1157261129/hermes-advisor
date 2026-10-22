@@ -11,11 +11,10 @@ Hermes Agent 插件，移植 pi 扩展 [`@juicesharp/rpiv-advisor`](https://pi.d
 ## 安装
 
 ```bash
-hermes plugins install 1157261129/hermes-advisor
-hermes plugins enable advisor
+hermes plugins install 1157261129/hermes-advisor --enable   # owner/repo 简写；加 --ref <sha> 可锁提交
 ```
 
-新会话生效。想先在本地改代码再装，也可以直接放目录（热重载更顺手）：
+新会话生效。想先在本地改代码再装，也可以直接放目录（改完保存即生效）：
 
 ```bash
 git clone https://github.com/1157261129/hermes-advisor ~/workspace/hermes-advisor
