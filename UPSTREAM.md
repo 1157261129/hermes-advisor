@@ -10,13 +10,42 @@
 | 仓库 | `juicesharp/rpiv-mono` |
 | 路径 | `packages/rpiv-advisor` |
 | npm 包 | `@juicesharp/rpiv-advisor` |
-| 版本 | **2.13.9** |
-| 提交 | [`c287cddb3eba50b9ecf670dbb04fecb9ef192d7e`](https://github.com/juicesharp/rpiv-mono/commit/c287cddb3eba50b9ecf670dbb04fecb9ef192d7e) |
-| 提交日期 | 2026-10-17 |
-| 核对日期 | 2026-10-22 |
-| 核对方式 | 该提交下 `advisor/*.ts`、`prompts/advisor-system.txt`、`LICENSE` 与 npm 包 2.13.9 逐文件 sha256 一致 |
+| 版本 | **2.15.0** |
+| 提交 | [`9bdbe85885b5f2f69c06e98e93fd182c44bed797`](https://github.com/juicesharp/rpiv-mono/commit/9bdbe85885b5f2f69c06e98e93fd182c44bed797) |
+| 提交日期 | 2026-10-24 |
+| 核对日期 | 2026-10-28 |
+| 核对方式 | 该提交下 `advisor/*.ts`、`prompts/advisor-system.txt`、`LICENSE` 与 npm 包 2.15.0 逐文件 sha256 一致 |
 
 机器可读的同一份记录在 `.upstream.json`，检查脚本读它。
+
+## 版本核对记录
+
+| 核对日期 | 从 → 到 | 结论 |
+| --- | --- | --- |
+| 2026-10-22 | 初次移植 → 2.13.9 | 提示词、guideline、清单格式、失败文案全部按该提交移植 |
+| 2026-10-28 | 2.13.9 → 2.15.0 | 无可移植语义，`advisor.py` 不改（见下） |
+
+### 2.13.9 → 2.15.0（2.14.0 / 2.14.1 / 2.14.2 / 2.15.0）
+
+发布包内只有 4 个文件变化：`advisor/execute.ts`、`advisor/pi-compat.ts`、`advisor/register.ts`、
+`package.json`（`rpiv-config` 依赖只升版本，CHANGELOG 之外无代码变化）。
+`prompts/advisor-system.txt`、`advisor/messages.ts`、`advisor/inventory.ts`、`advisor/context.ts`、
+`advisor/policy.ts` 逐字节未变——即「上游更新时怎么办」清单的第 1–5 项全部无需动作。
+
+三项新行为都是 pi 宿主专属，且 Hermes 宿主已有对应能力：
+
+1. **会话 id（2.14.1）**：pi 用 `advisor-<pi session id>` 派生 prompt-cache key、OpenCode 的
+   session 头，并与执行器的缓存 key / Codex websocket 隔离，另在 `session_shutdown` 释放资源。
+   Hermes 侧由宿主统一处理：`agent/turn_context.py` 每轮把 `session_id` / `cache_scope` 写进
+   ContextVar，`agent/auxiliary_client.py` 据此派生 `prompt_cache_key`；`ctx.llm.complete()` 没有
+   session 参数，插件既无处传、也不该传。
+2. **瞬时故障重试（2.15.0）**：pi 用 `retryAssistantCall` + `retry` 设置重试 overloaded/限流/断连。
+   宿主已有等价策略：`auxiliary_client._should_retry_same_provider()` 对 5xx/408/连接类错误在同
+   provider 上重试（`auxiliary.transient_retries` 默认 2，指数退避上限 8s），之后走 fallback 阶梯，
+   且显式关掉了 SDK 自带重试。`consult()` 只在重试与 fallback 都失败后才收到异常，失败文案不变。
+3. **`session_shutdown` 清理**：pi 的进程退出问题；本插件 `on_session_end` 只清快照，客户端池归宿主。
+
+`PLAN.md` 保留 2.13.9 的移植与验证记录，不回填版本号。
 
 ## 已读并用于移植的上游文件
 

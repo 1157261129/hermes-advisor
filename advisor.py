@@ -1,4 +1,4 @@
-"""advisor 插件核心实现（移植 pi 扩展 ``@juicesharp/rpiv-advisor`` 2.13.9）。
+"""advisor 插件核心实现（移植 pi 扩展 ``@juicesharp/rpiv-advisor`` 2.15.0）。
 
 执行器模型通过零参数 ``advisor()`` 工具，把当前**已解析上下文**交给一个更强的审阅模型，
 取回计划、纠偏或停止信号。审阅模型走 Hermes 原生 ``auxiliary.advisor`` 槽位：认证、路由、

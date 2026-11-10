@@ -1,7 +1,7 @@
 # hermes-advisor
 
 Hermes Agent 插件，移植 pi 扩展 [`@juicesharp/rpiv-advisor`](https://pi.dev/packages/@juicesharp/rpiv-advisor)
-（对照版本 **2.13.9**，源码 `rpiv-mono/packages/rpiv-advisor`）：给执行器模型配一个零参数的
+（对照版本 **2.15.0**，源码 `rpiv-mono/packages/rpiv-advisor`）：给执行器模型配一个零参数的
 `advisor` 工具，随时把**整段已解析上下文**交给一个更强的审阅模型，拿回计划、纠偏或停止信号，
 然后继续干活。
 
@@ -156,8 +156,8 @@ UPSTREAM.md               # 固定的上游提交/版本，以及上游更新时
 scripts/check-upstream.sh # 检查上游是否有新提交/新版本（有漂移退出码 1）
 ```
 
-上游固定引用见 `UPSTREAM.md`（当前 `@juicesharp/rpiv-advisor` 2.13.9 @
-`c287cddb3eba50b9ecf670dbb04fecb9ef192d7e`）；定期跑 `./scripts/check-upstream.sh`。
+上游固定引用见 `UPSTREAM.md`（当前 `@juicesharp/rpiv-advisor` 2.15.0 @
+`9bdbe85885b5f2f69c06e98e93fd182c44bed797`）；定期跑 `./scripts/check-upstream.sh`。
 
 ## License
 
