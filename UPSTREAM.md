@@ -30,9 +30,10 @@
 
 ### 2.15.0 复核（提交 9bdbe85885b5 → ad6cc0afd24a）
 
-上游 `packages/rpiv-advisor` 在 2.15.0 之后有 5 个提交，包内唯一变更是未随包发布的
-`advisor.transcript-tools.test.ts`：原断言写死 Pi 默认提示词字面量，改为从会话记录读取执行器
-提示词再断言含 `/coding assistant/`，因为 Pi 1.5.2 改写了默认提示词措辞。属宿主适配，不涉及本插件。
+仓库从上一个固定提交到这个固定提交共 5 个提交，其中只有 `ad6cc0a` 触及 `packages/rpiv-advisor`，
+且只改一个未随包发布的测试文件：`advisor.transcript-tools.test.ts` 先把会话记录里的执行器提示词
+取出、断言其匹配 `/coding assistant/`，再断言顾问请求的 system prompt 包含整段执行器提示词；
+不再写死 Pi 默认提示词的完整字面量，因为 Pi 1.5.2 改写了措辞。属宿主适配，不涉及本插件。
 
 发布包 23 个文件与 npm 2.15.0 逐字节一致，即「上游更新时怎么办」清单的第 1–5 项（提示词与
 guideline、清单格式、上下文整形、失败文案、禁用规则）全部无需动作。其余 4 个提交落在
