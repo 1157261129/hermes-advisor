@@ -11,10 +11,12 @@
 | 路径 | `packages/rpiv-advisor` |
 | npm 包 | `@juicesharp/rpiv-advisor` |
 | 版本 | **2.15.0** |
-| 提交 | [`9bdbe85885b5f2f69c06e98e93fd182c44bed797`](https://github.com/juicesharp/rpiv-mono/commit/9bdbe85885b5f2f69c06e98e93fd182c44bed797) |
-| 提交日期 | 2026-10-24 |
-| 核对日期 | 2026-10-28 |
-| 核对方式 | 该提交下 `advisor/*.ts`、`prompts/advisor-system.txt`、`LICENSE` 与 npm 包 2.15.0 逐文件 sha256 一致 |
+| 提交 | [`ad6cc0afd24a5a91b9c413bde5ed8e15319b5041`](https://github.com/juicesharp/rpiv-mono/commit/ad6cc0afd24a5a91b9c413bde5ed8e15319b5041) |
+| 提交日期 | 2026-11-11 |
+| 核对日期 | 2026-11-18 |
+| 核对方式 | 该提交下发布包 23 个文件（`advisor/*.ts`、`prompts/advisor-system.txt`、`advisor-ui.ts`、`index.ts`、`fuzzy.ts`、`docs/*`、`README.md`、`LICENSE`、`package.json`）与 npm 包 2.15.0 逐文件 sha256 一致 |
+
+该提交不是 npm 2.15.0 的发布提交（`gitHead` 为 `ce6d3530410812ca504ec294995581a52170f9e1`），但上表 23 个发布文件与发布包的 tar 内容逐字节相同，语义等价。
 
 机器可读的同一份记录在 `.upstream.json`，检查脚本读它。
 
@@ -24,6 +26,18 @@
 | --- | --- | --- |
 | 2026-10-22 | 初次移植 → 2.13.9 | 提示词、guideline、清单格式、失败文案全部按该提交移植 |
 | 2026-10-28 | 2.13.9 → 2.15.0 | 无可移植语义，`advisor.py` 不改（见下） |
+| 2026-11-18 | 2.15.0 复核（提交 9bdbe85 → ad6cc0a） | 发布内容未变，仅测试文件差异，`advisor.py` 与测试都不改（见下） |
+
+### 2.15.0 复核（提交 9bdbe85885b5 → ad6cc0afd24a）
+
+上游 `packages/rpiv-advisor` 在 2.15.0 之后有 5 个提交，包内唯一变更是未随包发布的
+`advisor.transcript-tools.test.ts`：原断言写死 Pi 默认提示词字面量，改为从会话记录读取执行器
+提示词再断言含 `/coding assistant/`，因为 Pi 1.5.2 改写了默认提示词措辞。属宿主适配，不涉及本插件。
+
+发布包 23 个文件与 npm 2.15.0 逐字节一致，即「上游更新时怎么办」清单的第 1–5 项（提示词与
+guideline、清单格式、上下文整形、失败文案、禁用规则）全部无需动作。其余 4 个提交落在
+`rpiv-workflow`、`rpiv-ask-user-question`、`rpiv-pi`、`rpiv-todo`、站点与根 `package.json` 依赖，
+与移植面无关。
 
 ### 2.13.9 → 2.15.0（2.14.0 / 2.14.1 / 2.14.2 / 2.15.0）
 

@@ -157,7 +157,8 @@ scripts/check-upstream.sh # 检查上游是否有新提交/新版本（有漂移
 ```
 
 上游固定引用见 `UPSTREAM.md`（当前 `@juicesharp/rpiv-advisor` 2.15.0 @
-`9bdbe85885b5f2f69c06e98e93fd182c44bed797`）；定期跑 `./scripts/check-upstream.sh`。
+`ad6cc0afd24a5a91b9c413bde5ed8e15319b5041`，2026-11-18 复核）；定期跑
+`./scripts/check-upstream.sh`。
 
 ## License
 
